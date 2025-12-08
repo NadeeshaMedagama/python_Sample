@@ -1,0 +1,1075 @@
+
+Choreo APIM Setup Guide For Development
+
+Choreo APIM Setup Guide For Development
+Source repos:
+Building the product
+Install Java
+Install maven
+Open a project
+Building Choreo APIM Extensions
+Building product-apim
+Configure with a new MongoDB Atlas Database
+Setting up MSSQL for AM_DB locally
+Configure Choreo Product APIM
+Starting Choreo Product APIM
+Try-out Choreo Product APIM
+Starting APIM with Choreo Connect 1.0.0
+Setting up APIM to exchange Choreo STS token
+APIM Internal Request Flow (From Publisher REST API to Database)
+Setting up APIM to trust choreo STS tokens
+Setup Asgardeo As Key Manager locally
+Choreo APIM Hotfix Creation
+Misc
+
+Source repos:
+Make sure you have at least READ access to the below repo.
+If not, we need to request and get access.
+
+https://github.com/wso2-enterprise/choreo-product-apim (main branch)
+Building the product
+ Refer this to set up the prerequisites.
+Install Java
+You need to have JDK installed before working with the API manager.
+For this use Oracle or OpenJDK Java - openjdk version "11.0.19" or a lower version. (there is a build issue on and after 11.0.20 which needs to be fixed)
+
+Important: After installing JDK you need to set JAVA_HOME path variable. For that add the following line to the ~/.bashrc file.
+
+export JAVA_HOME="/usr/lib/jvm/OpenJDK11U-jdk_x64_linux_hotspot_11.0.19_7/jdk-11.0.19+7"
+export PATH="$JAVA_HOME/bin:$PATH"
+
+Then force a reload of the .bashrc script by executing the following
+
+source ~/.bashrc
+Install maven
+Installing Maven on Ubuntu using apt is a simple, straightforward process.
+Update the package index and install Maven by entering the following commands:
+
+sudo apt update
+sudo apt install maven
+
+To verify the installation, run:
+
+mvn -version
+
+Important
+It is necessary that you have Maven 3.0.4 or later.
+
+
+Open a project
+It is a good practice to use the pom.xml file which is located in the home directory of the project to open the project. Just select the pom.xml file and open it as a project with your IDE.
+Building product-apim
+It is recommended to use the terminal rather than using the built-in terminal of IDE for fast building of the project.
+
+
+Run maven build for the root pom of choreo-product-apim repo.
+
+choreo-product-apim$ mvn clean install
+
+For MacOS M1 there is a known build issue. Use:
+mvn clean install -Dos.arch=x86_64
+
+
+Note: 
+This build process will take some time (10 - 20mins). If you get issues with the failing tests, run the following command to skip the tests.
+›
+mvn clean install -Dmaven.test.skip=true -DskipTests
+
+If the build fails during a certain point, make the necessary changes and run the following command to resume the build from the point of failure. Here the <failed-package> refers to the package at which the build failed (ex: :org.wso2.carbon.apimgt.publisher.feature).
+
+mvn install -rf <failed-package> -Dmaven.test.skip=true
+
+
+
+Once the product is built, the zip file of the product is available at 
+choreo-product-apim/modules/distribution/product/target/wso2am-<version>-SNAPSHOT.zip. 
+Starting API Manager:
+wso2am-<version>-SNAPSHOT/bin$ ./apimanager.sh
+
+
+Note: if you are running Rancher Desktop in MacOS, there is a port conflict between it and API Manager for 9443 port. To overcome this, kill the process which holds the 9443 port (it's a webhook process and doesn’t affect Rancher). To find the process use 
+
+lsof -nP -iTCP:9443 -sTCP:LISTEN
+
+
+
+Start API Manager in Debugging Mode
+
+>.
+
+Please start the remote debugging client to continue...
+JAVA_HOME environment variable is set to C:\Program Files\Eclipse Adoptium\jdk-11.0.18.10-hotspot
+CARBON_HOME environment variable is set to C:\Users\SHAMLY~1\Desktop\SOURCE~1\CHOREO~2\modules\DISTRI~1\product\target\WSO2AM~1.0-S\bin\..
+Listening for transport dt_socket at address: 5005
+
+Create a debug profile in the IDE with 5005 port and start the debugger to continue starting the API Manager.
+
+
+Patching API Manager after building
+
+We can avoid rebuilding the whole thing by patching the specific part of the code when doing development.
+
+Patching has to applied in 3 ways:
+
+Webapps
+includes
+org.wso2.carbon.apimgt.rest.api.admin.v1
+org.wso2.carbon.apimgt.rest.api.publisher.v1
+org.wso2.carbon.apimgt.rest.api.store.v1
+org.wso2.carbon.apimgt.internal.service
+org.wso2.am.choreo.extensions.rest.api.choreo.console.v1 
+Build the webapp (in /target, find the respective <webappname>.war file)
+Navigate to repository/deployment/server/webapps
+Remove the existing <webappname>.war
+Remove the folder with name <webappname> 
+Make sure to do (d) and (e) in the same order 
+Copy the <webappname>.war into the same folder
+We can do this without server restart as well
+Utility jar
+Includes:
+org.wso2.carbon.apimgt.rest.api.util
+Build this, get the jar from /target and replace the same file which resides in wso2am-4.0.0-SNAPSHOT/lib/runtimes/cxf3/
+Need to restart the server to apply change
+Any other jar
+Create folder called patch9999 inside repository/components/patches
+Copy the jar into patch9999
+Restart to apply the change
+
+Configure with a new MongoDB Atlas Database
+
+With the existing configuration, there is a default mongodb database. But it is better if you can point that to your own account. Follow the doc for the instructions:
+https://docs.google.com/document/d/1hwhxWiLd0Fi5ei7IvU_3wkYrPZkvIxPxjlOILXQSYXw/edit
+
+Setting up MSSQL for AM_DB locally
+https://hub.docker.com/_/microsoft-mssql-server
+
+Or the following docker image
+mcr.microsoft.com/azure-sql-edge:1.0.7
+
+
+Download the script https://github.com/wso2-enterprise/ƒchoreo-control-plane/blob/main/databases/scripts/mssql/choreo_apim_db_mssql.sql
+
+Remove the -- Create User section at the top of the script
+
+Add  below to the top of the script and save the file.
+
+
+-- Create database
+IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'choreo_apim_db')
+BEGIN
+  CREATE DATABASE choreo_apim_db;
+END;
+GO
+
+USE choreo_apim_db;
+
+
+
+Set permissions to the script file
+
+chmod 777 choreo_apim_db_mssql.sql
+
+Start the MSSQL Server
+
+docker run -e "ACCEPT_EULA=Y" -e 'SA_PASSWORD=yourStrong#Password' -p 1433:1433 -d -v <path-to-mssql-script>:/tmp/mssql.sql --name mssql mcr.microsoft.com/mssql/server:2019-CU14-ubuntu-20.04
+
+Eg:
+docker run -e "ACCEPT_EULA=Y" -e 'SA_PASSWORD=yourStrong#Password' -p 1433:1433 -d -v /home/malintha/wso2am-4.0.0-SNAPSHOT/dbscripts/apimgt/mssql.sql:/tmp/mssql.sql --name mssql mcr.microsoft.com/mssql/server:2019-CU14-ubuntu-20.04
+
+
+Run DB Script:
+
+docker exec -it mssql /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'yourStrong#Password' -i /tmp/mssql.sql
+
+Sample output:
+Changed database context to 'choreo_apim_db'.
+
+(1 rows affected)
+
+(3 rows affected)
+
+(1 rows affected)
+
+(1 rows affected)
+
+(1 rows affected)
+
+(1 rows affected)
+
+(1 rows affected)
+
+
+
+Replace the [database.apim_db] config with below config in deployment.toml (wso2am-4.0.0-SNAPSHOT/repository/conf/deployment.toml)
+
+deployment.toml
+
+
+Download mssql jdbc connector and add it to wso2am-4.0.0-SNAPSHOT/repository/components/lib.
+https://repo.maven.apache.org/maven2/com/microsoft/sqlserver/mssql-jdbc/12.8.1.jre11/mssql-jdbc-12.8.1.jre11.jar
+
+
+$ cd wso2am-4.0.0-SNAPSHOT/repository/components/lib
+
+$ curl https://repo.maven.apache.org/maven2/com/microsoft/sqlserver/mssql-jdbc/9.2.1.jre11/mssql-jdbc-9.2.1.jre11.jar -o mssql-jdbc-9.2.1.jre11.jar
+
+
+Start API Manager (make sure to use JDK 11 to start APIM. The mssql connector can only run with JDK 11 and up)
+Configure Choreo Product APIM
+
+Add below configs to deployment.toml so that it will engage choreo specific token exchange grant handler and token issuer.
+
+[[oauth.custom_grant_type]]
+name="urn:ietf:params:oauth:grant-type:token-exchange"
+grant_handler="org.wso2.am.choreo.extensions.token.handler.ChoreoTokenExchangeGrantHandler"
+grant_validator="org.wso2.carbon.identity.oauth2.grant.token.exchange.TokenExchangeGrantValidator"
+[oauth.custom_grant_type.properties]
+IdTokenAllowed=true
+
+[oauth.extensions.token_types.token_type]
+name="JWT"
+issuer="org.wso2.am.choreo.extensions.token.handler.s"
+
+[choreo.ChoreoTokenHandler]
+appServiceUrl="app-service.dev-choreo-system:8080"
+authzServiceUrl="rpc-api-authz-dv.cloud-internal.wso2.com:80"
+authzServiceEnabled=false
+choreoControlPlaneOrgUuid="783c6c4d-8b9b-4190-b70a-e717ab1ee739"
+allowed_claims="aut, given_name, authenticated_idp, name, family_name, middle_name, nickname, updated_at, email, email_verified, groups, username"
+
+[[choreo.serviceProvider]]
+clientId="dummy_value"
+scopes="apim:api_view apim:api_manage apim:api_import_export apim:api_list_view apim:api_product_import_export apim:subscribe apim:app_manage apim:app_import_export apim:sub_manage"
+
+
+
+Add below configs to deployment.toml 
+
+
+[[default.subscription.policy]]
+display_name = "Unlimited"
+request_count = "-1"
+time_unit = "min"
+description = "Allows unlimited requests"
+api_type = "REST"
+
+
+[[default.subscription.policy]]
+display_name = "Gold"
+request_count = "5000"
+time_unit = "min"
+description = "Allows 5000 requests per minute"
+api_type = "REST"
+
+
+[[default.subscription.policy]]
+display_name = "Silver"
+request_count = "2000"
+time_unit = "min"
+description = "Allows 2000 requests per minute"
+api_type = "REST"
+
+
+[[default.subscription.policy]]
+display_name = "Bronze"
+request_count = "1000"
+time_unit = "min"
+description = "Allows 1000 requests per minute"
+api_type = "REST"
+
+
+[[default.subscription.policy]]
+display_name = "AsyncUnlimited"
+request_count = "-1"
+time_unit = "min"
+description = "Allows unlimited events"
+api_type = "WS"
+
+
+Starting Choreo Product APIM
+Unzip wso2am-<version>-SNAPSHOT.zip, navigate to the /bin directory and execute the necessary command to start the server.
+For Linux 	- sh api-manager.sh
+For windows 	- api-manager.bat --run
+
+
+Debugging the code:
+
+Start API Manager with command
+
+bin$ ./api-manager.sh debug 5005
+
+Try-out Choreo Product APIM
+
+Unlike the On-Prem API Manager, Choreo API Manager doesn’t come-up with UIs for Publisher/Developer Portal and Admin. In order to create APIs, applications etc, we need to use the set of REST APIs available in the product.
+
+
+The sample APIM Postman Collection includes request samples for APIM Publisher, DevPortal and Admin.
+
+
+
+Setup the variables by using Manage Environments:
+
+
+
+
+
+
+
+
+Add below variables:
+
+serverURL: https://localhost:9443
+publisherBasePath: /api/am/publisher/v2
+organizationId: testOrg1
+devportalBasePath: /api/am/devportal/v2
+
+
+Finally select the environment from the name you added:
+
+
+Create an Application to generate an access token:
+
+Use Request: Authentication -> Register DCR App
+
+This will register an application (client ID and secret) in order to generate an access token.
+
+
+
+curl -k -s -X POST 'https://localhost:9443/client-registration/v0.17/register' -H 'Authorization: Basic YWRtaW46YWRtaW4=' -H 'Content-Type: application/json' --data-raw ' {  "callbackUrl":"apim.com",  "clientName":"choreo-apim-quick-start",  "owner":"admin",  "grantType":"client_credentials password refresh_token",  "saasApp":true}'
+
+
+
+Generate Token:
+
+
+
+
+curl -k -s -X POST 'https://localhost:9443/oauth2/token' -u <clientId>:<clientSecret> -H 'Content-Type: application/x-www-form-urlencoded' --data-urlencode 'grant_type=password' --data-urlencode 'username=admin' --data-urlencode 'password=admin' --data-urlencode 'scope=apim:api_view apim:api_create apim:api_publish apim:subscribe apim:api_delete service_catalog:service_view service_catalog:service_write apim:api_generate_key'
+
+
+	Note: Use the clientID and clientSecret received from the DCR response and use them here.
+
+
+Create an API:
+
+Use Request: Publish And Invoke REST API -> Add API
+
+
+
+
+Create API Payload Examples:
+
+
+Create API
+{
+    "id": "61d6d78c9ebed5068eeb7b3c",
+    "name": "TestAPI",
+    "description": "This API is used to connect to the TestAPI service",
+    "context": "/test-api",
+    "version": "1.0.0",
+    "lifeCycleStatus": "CREATED",
+    "wsdlInfo": null,
+    "wsdlUrl": null,
+    "responseCachingEnabled": false,
+    "cacheTimeout": 300,
+    "hasThumbnail": false,
+    "isDefaultVersion": false,
+    "isRevision": false,
+    "revisionedApiId": null,
+    "revisionId": 0,
+    "enableSchemaValidation": false,
+    "type": "HTTP",
+    "audience": null,
+    "transport": [
+        "http",
+        "https"
+    ],
+    "tags": [],
+    "policies": [
+        "Bronze"
+    ],
+    "apiThrottlingPolicy": null,
+    "authorizationHeader": "Authorization",
+    "securityScheme": [
+        "oauth2",
+        "oauth_basic_auth_api_key_mandatory"
+    ],
+    "maxTps": null,
+    "visibility": "PUBLIC",
+    "visibleRoles": [
+        ""
+    ],
+    "visibleTenants": [],
+    "mediationPolicies": [],
+    "subscriptionAvailability": "CURRENT_TENANT",
+    "subscriptionAvailableTenants": [
+        ""
+    ],
+    "additionalProperties": [],
+    "additionalPropertiesMap": {},
+    "monetization": null,
+    "accessControl": "NONE",
+    "accessControlRoles": [],
+    "businessInformation": {
+        "businessOwner": null,
+        "businessOwnerEmail": null,
+        "technicalOwner": null,
+        "technicalOwnerEmail": null
+    },
+    "corsConfiguration": {
+        "corsConfigurationEnabled": true,
+        "accessControlAllowOrigins": [
+            "*"
+        ],
+        "accessControlAllowCredentials": false,
+        "accessControlAllowHeaders": [
+            "authorization",
+            "Access-Control-Allow-Origin",
+            "Content-Type",
+            "SOAPAction",
+            "testKey",
+            "api-key",
+            "X-Authorization"
+        ],
+        "accessControlAllowMethods": [
+            "GET",
+            "PUT",
+            "POST",
+            "DELETE",
+            "PATCH",
+            "OPTIONS"
+        ]
+    },
+    "websubSubscriptionConfiguration": {
+        "enable": false,
+        "secret": "",
+        "signingAlgorithm": "SHA1",
+        "signatureHeader": "x-hub-signature"
+    },
+    "workflowStatus": null,
+    "createdTime": "1641469836828",
+    "lastUpdatedTime": null,
+    "endpointConfig": {
+        "endpoint_type": "http",
+        "sandbox_endpoints": {
+            "url": "https://run.mocky.io/v3/e9dc0ae9-cfe8-4d1b-b7de-99dce85750ff"
+        },
+        "production_endpoints": {
+            "url": "https://run.mocky.io/v3/e9dc0ae9-cfe8-4d1b-b7de-99dce85750ff"
+        }
+    },
+    "endpointImplementationType": "ENDPOINT",
+    "scopes": [],
+    "operations": [
+        {
+            "id": "",
+            "target": "/test",
+            "verb": "GET",
+            "authType": "Application & Application User",
+            "throttlingPolicy": null,
+            "scopes": [],
+            "usedProductIds": [],
+            "amznResourceName": null,
+            "amznResourceTimeout": null,
+            "payloadSchema": null,
+            "uriMapping": null
+        }
+    ],
+    "threatProtectionPolicies": null,
+    "categories": [],
+    "keyManagers": [
+        "all"
+    ],
+    "serviceInfo": null,
+    "advertiseInfo": {
+        "advertised": false,
+        "originalDevPortalUrl": null,
+        "apiOwner": "ca0c41b4-5bbd-48c8-b319-cf64d98e85b1",
+        "vendor": "WSO2"
+    }
+}
+Create API with scopes
+{
+    "id": "61d6d78c9ebed5068eeb7b3c",
+    "name": "TestAPI",
+    "description": "This API is used to connect to the PublisherTest service",
+    "context": "/test-api",
+    "version": "1.0.0",
+    "lifeCycleStatus": "CREATED",
+    "wsdlInfo": null,
+    "wsdlUrl": null,
+    "responseCachingEnabled": false,
+    "cacheTimeout": 300,
+    "hasThumbnail": false,
+    "isDefaultVersion": false,
+    "isRevision": false,
+    "revisionedApiId": null,
+    "revisionId": 0,
+    "enableSchemaValidation": false,
+    "type": "HTTP",
+    "audience": null,
+    "transport": [
+        "http",
+        "https"
+    ],
+    "tags": [],
+    "policies": [
+        "Bronze"
+    ],
+    "apiThrottlingPolicy": null,
+    "authorizationHeader": "Authorization",
+    "securityScheme": [
+        "oauth2",
+        "oauth_basic_auth_api_key_mandatory"
+    ],
+    "maxTps": null,
+    "visibility": "PUBLIC",
+    "visibleRoles": [
+        ""
+    ],
+    "visibleTenants": [],
+    "mediationPolicies": [],
+    "subscriptionAvailability": "CURRENT_TENANT",
+    "subscriptionAvailableTenants": [
+        ""
+    ],
+    "additionalProperties": [],
+    "additionalPropertiesMap": {},
+    "monetization": null,
+    "accessControl": "NONE",
+    "accessControlRoles": [],
+    "businessInformation": {
+        "businessOwner": null,
+        "businessOwnerEmail": null,
+        "technicalOwner": null,
+        "technicalOwnerEmail": null
+    },
+    "corsConfiguration": {
+        "corsConfigurationEnabled": true,
+        "accessControlAllowOrigins": [
+            "*"
+        ],
+        "accessControlAllowCredentials": false,
+        "accessControlAllowHeaders": [
+            "authorization",
+            "Access-Control-Allow-Origin",
+            "Content-Type",
+            "SOAPAction",
+            "testKey",
+            "api-key",
+            "X-Authorization"
+        ],
+        "accessControlAllowMethods": [
+            "GET",
+            "PUT",
+            "POST",
+            "DELETE",
+            "PATCH",
+            "OPTIONS"
+        ]
+    },
+    "websubSubscriptionConfiguration": {
+        "enable": false,
+        "secret": "",
+        "signingAlgorithm": "SHA1",
+        "signatureHeader": "x-hub-signature"
+    },
+    "workflowStatus": null,
+    "createdTime": "1641469836828",
+    "lastUpdatedTime": null,
+    "endpointConfig": {
+        "endpoint_type": "http",
+        "sandbox_endpoints": {
+            "url": "https://www.mocky.io/v3/9b660ebd-789f-41e9-8078-84f1e821b817"
+        },
+        "production_endpoints": {
+            "url": "https://www.mocky.io/v3/9b660ebd-789f-41e9-8078-84f1e821b817"
+        }
+    },
+    "endpointImplementationType": "ENDPOINT",
+    "scopes": [
+        {
+            "scope": {
+                "name": "read_menu",
+                "displayName": "read_menu",
+                "description": "This Scope can used to read menu",
+                "bindings": [
+                    "admin"
+                ]
+            },
+            "shared": true
+        }
+    ],
+    "scopePrefix": "urn:johndoe:testapi:",
+    "operations": [
+        {
+            "id": "",
+            "target": "/test",
+            "verb": "GET",
+            "authType": "Application & Application User",
+            "throttlingPolicy": null,
+            "scopes": ["read_menu"],
+            "usedProductIds": [],
+            "amznResourceName": null,
+            "amznResourceTimeout": null,
+            "payloadSchema": null,
+            "uriMapping": null
+        }
+    ],
+    "threatProtectionPolicies": null,
+    "categories": [],
+    "keyManagers": [
+        "all"
+    ],
+    "serviceInfo": null,
+    "advertiseInfo": {
+        "advertised": false,
+        "originalDevPortalUrl": null,
+        "apiOwner": "ca0c41b4-5bbd-48c8-b319-cf64d98e85b1",
+        "vendor": "WSO2"
+    }
+}
+
+
+
+
+
+
+
+
+Use the access_token retrieved from the Generate Token step to substitute to the access_token.
+Create a file called payload.json with the API creation request data. Keep the file in the same location where curl is executed.
+
+curl -k -s -X POST 'https://localhost:9443/api/am/publisher/v2/apis?organizationId=carbon.super&openAPIVersion=v3' -H 'Authorization: Bearer <access_token>' -H 'Content-Type: application/json' -d @payload.json
+
+
+
+Note: Extract the “id” field from the API Creation response and use it for the latter requests.
+
+Create API Revision
+
+
+curl -s -X POST 'https://localhost:9443/api/am/publisher/v2/apis/<api_id>/revisions?organizationId=carbon.super' -H 'Content-Type: application/json' -H 'Authorization: Bearer <access_token>' --data-raw '{  "description": "added test API" }'
+Response:
+
+{
+    "displayName": "Revision 1",
+    "id": "62e62520d1337c4d4352155c",      <<<<< revision_id
+    "description": "added test API",
+    "createdTime": 1659249952000,
+    "apiInfo": {
+        "id": "62e624cbd1337c4d4352155b"
+    },
+    "deploymentInfo": []
+}
+
+
+
+
+Deploy API Revision
+
+
+curl -s -X POST 'https://localhost:9443/api/am/publisher/v2/apis/<api_id>/deploy-revision?revisionId=<revision_id>&organizationId=carbon.super' -H 'Content-Type: application/json' -H 'Authorization: Bearer <access_token>' --data-raw '[ {  "name": "Default",  "displayOnDevportal": true,  "vhost": "localhost" }]'
+
+
+
+Publish API:
+
+
+curl -s -X POST 'https://localhost:9443/api/am/publisher/v2/apis/change-lifecycle?action=Publish&apiId=<api_id>&organizationId=carbon.super' -H 'Authorization: Bearer <access_token>'
+
+
+Create an Application:
+
+
+curl -s -X POST 'https://localhost:9443/api/am/devportal/v2/applications?organizationId=carbon.super' -H 'Authorization: Bearer <access_token>' -H 'Content-Type: application/json' --data-raw '{"name": "Choreo Test","throttlingPolicy": "Unlimited","description": "Choreo Test Application","tokenType": "JWT"}'
+Response:
+
+{
+    "applicationId": "8c8db1c8-e64f-4ff1-90f4-5c72fb8282e2",  <<< application_id
+    "name": "Choreo Test",
+    "throttlingPolicy": "Unlimited",
+    "description": "Choreo Test Application",
+    "tokenType": "JWT",
+    "status": "APPROVED",
+    "groups": [],
+    "subscriptionCount": 0,
+    "keys": [],
+    "attributes": {},
+    "subscriptionScopes": [],
+    "owner": "admin",
+    "hashEnabled": null,
+    "createdTime": "1659249994271",
+    "updatedTime": "1659249994271"
+}
+
+
+
+Generate Application Keys:
+
+
+curl -s -X POST 'https://localhost:9443/api/am/devportal/v2/applications/<application_id>/generate-keys?organizationId=carbon.super' -H 'Authorization: Bearer <access_token>' -H 'Content-Type: application/json' --data-raw '{    "keyType": "PRODUCTION",    "keyManager": "Resident Key Manager",    "grantTypesToBeSupported": ["urn:ietf:params:oauth:grant-type:token-exchange", "password", "client_credentials"],    "scopes": [    "am_application_scope",    "default"    ],    "validityTime": 3600}'
+{
+    "keyMappingId": "99fcf870-be0c-4e15-87c8-f67f0881ad31",
+    "keyManager": "Resident Key Manager",
+    "consumerKey": "nDAPflaWBRsA8xRu5rgdNkDYNlwa",  <<< client_id
+    "consumerSecret": "7p1b1fOkdJouOvuJqsn8OsSGe2Ma", <<< client_secret
+    "supportedGrantTypes": [
+        "urn:ietf:params:oauth:grant-type:token-exchange",
+        "password",
+        "client_credentials"
+    ],
+    "callbackUrl": "",
+    "keyState": "APPROVED",
+    "keyType": "PRODUCTION",
+    "mode": "CREATED",
+    "groupId": null,
+    "token": {
+        "accessToken":  ...
+        "validityTime": 3600
+    },
+    "additionalProperties": {
+        "id_token_expiry_time": 3600,
+       ...
+    }
+}
+
+
+
+
+
+Add Subscription:
+
+
+curl -s -X POST 'https://localhost:9443/api/am/devportal/v2/subscriptions?organizationId=carbon.super' -H 'Authorization: Bearer <access_token>' -H 'Content-Type: application/json' --data-raw '{  "applicationId": "<application_id>",  "apiId": "<api_id>",  "throttlingPolicy": "Bronze"}'
+Response:
+
+{
+    "subscriptionId": "f6c31d40-411c-4b71-8ecd-355b7c4cd03d",
+    "applicationId": "8c8db1c8-e64f-4ff1-90f4-5c72fb8282e2",
+    "apiId": "62e624cbd1337c4d4352155b",
+    "apiInfo": {
+        "id": "62e624cbd1337c4d4352155b",
+        "name": "TestAPI",
+        ...
+        "additionalProperties": []
+    },
+    "applicationInfo": {
+        "applicationId": "8c8db1c8-e64f-4ff1-90f4-5c72fb8282e2",
+        "name": "Choreo Test",
+        "throttlingPolicy": "Unlimited",
+        ...
+    },
+    "throttlingPolicy": "Bronze",
+    "requestedThrottlingPolicy": "Bronze",
+    "status": "UNBLOCKED",
+    "redirectionParams": null
+}
+
+
+
+Generate an Access Token To Invoke the API:
+
+
+curl -k -s -X POST 'https://localhost:9443/oauth2/token?grant_type=client_credentials' -H 'Content-Type: application/x-www-form-urlencoded' -u <client_id>:<client_secret> --data-urlencode 'grant_type=client_credentials’
+Response:
+
+{"access_token":"eyJ4NXQiOiJNell4TW1Ga09HWXdNV0kwWldObU5EY3hOR1l3WW1NNFpUQTNNV0ky ...","refresh_token":"a3f1d02e-b19c-309f-910f-356ed39446b3","scope":"default","token_type":"Bearer","expires_in":3600}
+
+
+
+Starting APIM with Choreo Connect 1.0.0
+
+Configuring the host machine
+
+Find the docker ip of the host machine (laptop)
+
+ifconfig | grep docker -A2
+
+docker0: flags=4099<UP,BROADCAST,MULTICAST>  mtu 1500
+        inet 172.17.0.1  netmask 255.255.0.0  broadcast 172.17.255.255
+        inet6 fe80::42:80ff:fe22:faf3  prefixlen 64  scopeid 0x20<link>
+
+Add an entry to /etc/hosts file with the ip address and “apim”. You can use “sudo gedit /etc/hosts” to open the editor in super user mode.
+
+172.17.0.1	apim
+
+Configuring Choreo Connect
+
+Download and extract choreo-connect-1.0.0.zip from https://github.com/wso2/product-microgateway/releases/tag/v1.0.0
+
+Add below config at the end of file:
+choreo-connect-1.0.0/docker-compose/choreo-connect/conf/config.toml
+
+
+[controlPlane]
+  enabled = true
+  serviceURL = "https://apim:9443/"
+  username = "admin"
+  password = "$env{cp_admin_pwd}"
+  environmentLabels = ["Default"]
+  skipSSLVerification = true
+ [controlPlane.brokerConnectionParameters]
+   eventListeningEndpoints = ["amqp://admin:$env{cp_admin_pwd}@apim:5672?retries='1'&connectdelay='30'"]
+
+
+Example updated file : https://github.com/malinthaprasan/choreo-connect-with-apim/blob/main/choreo-connect-1.0.0/conf/config.toml
+
+Configuring Choreo API Manager
+
+Unzip Choreo API Manager zip file
+Start it - (bin/api-manager.sh)
+Update the Resident Key Manager jwks url by executing the script: https://github.com/malinthaprasan/choreo-connect-with-apim/blob/main/choreo-connect-1.0.0/change-jwks.sh . This will change the default API’s jwks URL to be compatible with Choreo Connect Gateway.
+In order to run this, you need to install the command “jq” - (sudo apt-get install jq)
+
+curl -s -o- https://raw.githubusercontent.com/malinthaprasan/choreo-connect-with-apim/main/choreo-connect-1.0.0/change-jwks.sh | bash
+Output:
+
+"http://apim:9763/oauth2/jwks"
+
+
+
+Start Choreo Connect:d
+
+choreo-connect-1.0.0/docker-compose/choreo-connect$ docker-compose up
+
+Now try the steps of “Try-out Choreo Product APIM” to create an API, deploy, create an application, subscribe, and generate a token 
+
+Once successfully completed, stop the docker-compose and start again 
+docker-compose down
+docker-compose up
+
+Try to invoke the API using the below curl command. Use the token generated from “Generate an Access Token To Invoke the API” to substitute to <TOKEN>
+
+curl -H "Authorization: Bearer <TOKEN>" https://localhost:9095/test-api/1.0.0/test -k -v -H "Host: localhost"
+
+Setting up APIM to exchange Choreo STS token
+
+With this, we allow token-exchange to happen between tokens issued from Choreo STS and generate access tokens in APIM.
+
+Go to carbon console - https://localhost:9443/carbon and Login (admin/admin)
+
+Go to Identity Providers > Add
+
+
+
+
+Fill details as below and save:
+
+Choose IDP certificate type: Use IDP JWKS endpoint
+Identity provider’s JWKS endpoint : https://sts.choreo.dev/oauth2/jwks
+Alias: ciwnWuwZfbcdzBUcnkhKvi_mcBUa (this is the audience (aud) value of Choreo Console token)
+Identity Provider's Issuer Name: https://sts.choreo.dev:443/oauth2/token 
+
+
+Now go to the service providers
+Choose the client you created via “Create an Application to generate an access token” step
+Click Edit
+Expand “Inbound Authentication Configuration”
+Expand “OAuth/OpenID Connect Configuration”
+Click Edit
+Make sure “urn:ietf:params:oauth:grant-type:token-exchange” is selected
+Token Issuer type should be “JWT”  
+
+Now you can use a token exchange grant to exchange a token from Choreo Console with the local API Manager using the above client.
+
+To get a token from Choreo Console
+Login to choreo console - https://console.choreo.dev (Choose Chrome browser for this)
+Open up Browser Console 
+Type “graphql” in the filter box
+Copy the Authorization header value (except Bearer)
+
+
+
+curl --location --request POST 'https://localhost:9443/oauth2/token' \
+-u <client-id>:<client-secret> \
+--header 'Content-Type: application/x-www-form-urlencoded' \
+--data-urlencode 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange' \
+--data-urlencode 'subject_token=<add-console-token>' \
+--data-urlencode 'subject_token_type=urn:ietf:params:oauth:token-type:jwt' \
+--data-urlencode 'requested_token_type=urn:ietf:params:oauth:token-type:jwt' \
+--data-urlencode 'scope=openid' \
+-k
+
+
+APIM Internal Request Flow (From Publisher REST API to Database)
+
+https://excalidraw.com/#room=58047ad5ed3d2b89810e,m6AtiIOJ5bwvneNp5OasSw
+
+
+
+
+
+Setting up APIM to trust choreo STS tokens
+
+Add following configurations to deployment.toml file and restart the product. (change sts.preview-dv.choreo.dev to sts.choreo.dev if you are using prod tokens.)
+
+
+[[apim.jwt.issuer]]
+name = "https://sts.preview-dv.choreo.dev:443/oauth2/token"
+jwks.url = "https://sts.preview-dv.choreo.dev:443/oauth2/jwks"
+
+[[oauth.custom_grant_type]]
+name="urn:ietf:params:oauth:grant-type:token-exchange"
+grant_handler="org.wso2.am.choreo.extensions.token.handler.ChoreoTokenExchangeGrantHandler"
+grant_validator="org.wso2.carbon.identity.oauth2.grant.token.exchange.TokenExchangeGrantValidator"
+[oauth.custom_grant_type.properties]
+IdTokenAllowed=true
+
+[oauth.extensions.token_types.token_type]
+name="JWT"
+issuer="org.wso2.am.choreo.extensions.token.handler.ChoreoJWTTokenIssuer"
+
+
+
+Add the audiences with the client IDs of the portal REST APIs you need to access. Note that the client IDs will change between environments so use the correct value from the environment.
+
+
+[[apim.rest_api.jwt.audience]]
+basepath = "/api/am/publisher"
+audience = "https://sts.choreo.dev:443/oauth2/token"
+
+[[apim.rest_api.jwt.audience]]
+basepath = "/api/am/devportal"
+audience = "https://sts.choreo.dev:443/oauth2/token"
+
+[[apim.rest_api.jwt.audience]]
+basepath = "/api/am/admin"
+audience = "https://sts.choreo.dev:443/oauth2/token"
+
+
+
+
+Setup Asgardeo As Key Manager locally
+Configurations on deployment.toml
+
+[[apim.devportal.application_attributes]]
+required=false
+hidden=true
+default=""
+name="asgardeo_app_id"
+description="asgardeo app id"
+
+[[apim.devportal.application_attributes]]
+required=false
+hidden=true
+default=""
+name="asgardeo_app_id_sandbox"
+description="asgardeo sandbox app id"
+
+[choreo.asgardeo_system_app]
+token_endpoint="https://dev.api.asgardeo.io/oauth2/token"
+client_id="CHOREO_SYSTEM_APP_MANAGER"
+client_secret="$env{ASGARDEO_SYSTEM_APP_CLIENT_SECRET}"
+authz_endpoint="https://api.authz-dv.cloudservices.wso2.com"
+
+Adding the asgardeo Key Manager
+
+curl -s 'https://localhost:9443/api/am/admin/v2/key-managers?organizationId=<org_uuid>' -H 'Authorization: Bearer <token>' -H 'Content-Type: application/json' -d '{
+    "id": "8a0f19c6-ca2c-49e4-a66d-5f937b54c194",
+    "name": "_internal_key_manager_<org_handle>",
+    "displayName": "Asgardeo",
+    "type": "Asgardeo",
+    "description": "Asgardeo Direct Dev",
+    "clientRegistrationEndpoint": "https://dev.api.asgardeo.io/t/<org_handle>/api/server/v1",
+    "tokenEndpoint": "https://dev.api.asgardeo.io/t/<org_handle>/oauth2/token",
+    "revokeEndpoint": "https://dev.api.asgardeo.io/t/<org_handle>/oauth2/revoke",
+    "authorizeEndpoint": "https://dev.api.asgardeo.io/t/<org_handle>/oauth2/authorize",
+    "certificates": {
+        "type": "JWKS",
+        "value": "https://dev.api.asgardeo.io/t/<org_handle>/oauth2/jwks"
+    },
+    "availableGrantTypes": [
+        "refresh_token",
+        "password",
+        "client_credentials",
+        "authorization_code",
+        "implicit"
+    ],
+    "issuer": "https://dev.api.asgardeo.io/t/<org_handle>/oauth2/token",
+    "enableTokenGeneration": true,
+    "enableTokenEncryption": false,
+    "enableTokenHashing": false,
+    "enableMapOAuthConsumerApps": false,
+    "enableOAuthAppCreation": true,
+    "enableSelfValidationJWT": true,
+    "consumerKeyClaim": "azp",
+    "scopesClaim": "scope",
+    "enabled": true,
+    "tokenType": "DIRECT"
+}'
+
+
+
+
+
+
+Note: need to apply ASGARDEO_SYSTEM_APP_CLIENT_SECRET
+
+Create application (using normal app creation)
+
+Generate credentials using Asgardeo
+
+Export this env variable before generating keys:
+export ASGARDEO_AUTH_HEADER_PREFIX=”SystemApp”
+
+curl -s 'https://localhost:9443/api/am/devportal/v2/applications/87cf1bff-7c0a-40f4-a55b-fff7afeaa8f8/generate-keys?organizationId=<org_uuid>' -H 'Authorization: SystemApp <token>' -H 'Content-Type: application/json' -d '{
+    "keyType": "PRODUCTION",
+    "keyManager": "_internal_key_manager_<org_handle>",
+    "grantTypesToBeSupported": 
+["refresh_token", "password", "client_credentials"],
+    "scopes": [
+    "am_application_scope",
+    "default"
+    ],
+    "validityTime": 3600
+}'
+
+
+
+
+Note: Application will be created in your dev asgardeo account.
+Choreo APIM Hotfix Creation
+
+Choreo APIM Hotfix Creation
+
+
+Misc
+
+MSSQL Sample commands
+
+Login to database:
+
+docker exec -it mssql /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'yourStrong#Password'
+
+
+Show databases:
+
+SELECT name FROM master.dbo.sysdatabases
+GO
+
+master                                                                                                                          
+tempdb                                                                                                                          
+model                                                                                                                           
+msdb  
+
+Create database
+
+CREATE DATABASE MYDB;
+GO
+
+Exit:
+
+Run DB Script:
+
+docker exec -it mssql /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'yourStrong#Password' -i /tmp/mssql.sql
+
+Login using sqlcmd again
+
+Use database:
+
+3> use MYDB
+4> GO
+
+Changed database context to ‘MYDB’.
+
